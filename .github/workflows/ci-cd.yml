@@ -146,7 +146,7 @@ jobs:
           && true || false
         }}
       profiling-enabled: >-
-        ${{ steps.profiling-check.outputs.profiling-enabled || false }}
+        false
       cache-key-for-dep-files: >-
         ${{ steps.calc-cache-key-files.outputs.cache-key-for-dep-files }}
       git-tag: >-
