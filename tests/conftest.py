@@ -2,17 +2,22 @@
 
 """Pytest plugins and fixtures configuration."""
 
+import pathlib
 import shutil
 import socket
 import subprocess
+import typing as _t  # noqa: WPS111
 from functools import partial
 
 import pytest
 from _service_utils import (
+    HostPort,
     ensure_ssh_session_connected,
     wait_for_svc_ready_state,
 )
 
+import proxy
+from _proxypy_sshd_relay import PausableSshdTunnelHandler
 from pylibsshext.session import Session
 
 from pylibsshext import __libssh_version__
@@ -168,6 +173,68 @@ def ssh_session_connect(sshd_addr, ssh_clientkey_path):
     return partial(
         ensure_ssh_session_connected,
         sshd_addr=sshd_addr,
+        ssh_clientkey_path=ssh_clientkey_path,
+    )
+
+
+@pytest.fixture
+def sshd_replies_paused_file(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Locate a sentinel file that pauses the sshd replies in ``sshd_relay``.
+
+    :param tmp_path: Temporary directory to hold the sentinel file.
+    :returns: Path that stops forwarding the sshd replies once it exists.
+    """
+    return tmp_path / 'sshd-replies-paused'
+
+
+@pytest.fixture
+def sshd_relay(
+    sshd_addr: HostPort,
+    sshd_replies_paused_file: pathlib.Path,
+) -> _t.Iterator[HostPort]:
+    """Spawn a TCP relay in front of sshd that can withhold its replies.
+
+    :param sshd_addr: Hostname and port tuple of the sshd to relay to.
+    :param sshd_replies_paused_file: Sentinel file pausing the replies.
+    :yields: Hostname and port tuple of the relay.
+    """
+    hostname, port = sshd_addr
+    proxypy_args = [
+        f'--sshd-upstream-host={hostname!s}',
+        f'--sshd-upstream-port={port:d}',
+        f'--sshd-replies-paused-file={sshd_replies_paused_file!s}',
+    ]
+    # NOTE: The threadless mode runs the relay in separate processes,
+    # NOTE: which is necessary because the Cython modules hold the GIL
+    # NOTE: while blocking in libssh, which would starve relay threads.
+    with proxy.Proxy(
+        input_args=proxypy_args,
+        work_klass=PausableSshdTunnelHandler,
+        threadless=True,
+        num_acceptors=1,
+        num_workers=1,
+        port=0,  # ephemeral port, so that kernel allocates a free one
+    ) as proxy_instance:
+        yield str(proxy_instance.flags.hostname), proxy_instance.flags.port
+
+
+@pytest.fixture
+def ssh_session_connect_via_relay(
+    sshd_relay: HostPort,
+    ssh_clientkey_path: pathlib.Path,
+) -> _t.Callable[[Session], None]:
+    """
+    Authenticate existing session object against SSHD through a relay.
+
+    It returns a function that takes session as parameter.
+
+    :param sshd_relay: Hostname and port tuple of the relay.
+    :param ssh_clientkey_path: Path to the client private key.
+    :returns: Function that will connect the session.
+    """
+    return partial(
+        ensure_ssh_session_connected,
+        sshd_addr=sshd_relay,
         ssh_clientkey_path=ssh_clientkey_path,
     )
 

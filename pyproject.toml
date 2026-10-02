@@ -201,7 +201,7 @@ profile = "True"
 [tool.cibuildwheel]
 build-frontend = "build"
 # container-engine = "podman"  # FIXME?
-test-requires = "pytest pytest-cov pytest-xdist"
+test-requires = "proxy.py pytest pytest-cov pytest-xdist"
 test-command = "python -Im pytest -m smoke --no-cov {project}/tests"
 skip = [
   "*t-*",  # FIXME: Add support for free-threading / see issue #822

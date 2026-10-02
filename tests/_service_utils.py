@@ -15,6 +15,8 @@ _DEFAULT_RECONNECT_ATTEMPT_DELAY = (
     else _LINUX_RECONNECT_ATTEMPT_DELAY
 )
 
+HostPort = tuple[str, int]
+
 
 def wait_for_svc_ready_state(
     host,
