@@ -113,6 +113,10 @@ jobs:
 
     - name: Build wheels
       uses: pypa/cibuildwheel@v4.3.1
+      env:
+        # NOTE: Lets the GitHub CLI in the cibuildwheel hooks running on the
+        # NOTE: host fetch workflow artifacts:
+        GH_TOKEN: ${{ github.token }}
       with:
         package-dir: >-  # not necessarily a dir, we pass an acceptable sdist
           dist/${{ inputs.source-tarball-name }}
